@@ -5,7 +5,7 @@ const protobuf = require('protobufjs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// List of correct NYC subway feeds
+// Correct list of NYC Subway feed URLs
 const FEED_URLS = [
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace',
@@ -25,7 +25,7 @@ async function loadProto() {
   FeedMessage = root.lookupType('transit_realtime.FeedMessage');
 }
 
-// Allow CORS
+// Allow CORS for frontend access
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   next();
@@ -53,19 +53,24 @@ app.get('/trains', async (req, res) => {
 
       console.log('First 20 bytes of response:', Array.from(fullBuffer.slice(0, 20)));
 
+      // Skip if it's XML (starts with '<' == 60 ASCII)
+      if (fullBuffer[0] === 60) {
+        console.warn(`Feed at ${url} is returning XML (not GTFS-Realtime), skipping.`);
+        return;
+      }
+
       let message;
       try {
         // Try decoding raw first
         message = FeedMessage.decode(fullBuffer);
-        console.log('Decoded raw buffer successfully.');
+        console.log(`Decoded raw buffer successfully from ${url}.`);
       } catch (errorRaw) {
-        console.warn('Failed to decode raw buffer. Trying after skipping 16 bytes.');
+        console.warn(`Failed to decode raw buffer from ${url}. Trying after skipping 16 bytes.`);
         try {
-          // Try skipping 16 bytes (if there's framing)
           message = FeedMessage.decode(fullBuffer.slice(16));
-          console.log('Decoded buffer after skipping 16 bytes successfully.');
+          console.log(`Decoded buffer after skipping 16 bytes successfully from ${url}.`);
         } catch (errorSkip) {
-          console.error('Failed to decode even after skipping 16 bytes.');
+          console.error(`Failed to decode feed at ${url} even after skipping 16 bytes.`);
           throw errorSkip;
         }
       }
@@ -95,5 +100,5 @@ app.get('/trains', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚂 MTA Train Proxy (with debugging) running at http://localhost:${PORT}`);
+  console.log(`🚂 MTA Train Proxy (with XML protection) running at http://localhost:${PORT}`);
 });
