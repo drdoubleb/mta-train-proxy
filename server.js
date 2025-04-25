@@ -21,7 +21,7 @@ const FEED_URLS = [
 let FeedMessage = null;
 
 async function loadProto() {
-  const root = await protobuf.load('https://raw.githubusercontent.com/google/transit/master/gtfs-realtime/proto/gtfs-realtime.proto');
+  await protobuf.load('./gtfs-realtime.proto');
   FeedMessage = root.lookupType('transit_realtime.FeedMessage');
 }
 
