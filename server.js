@@ -1,9 +1,10 @@
 const express = require('express');
 const fetch = require('node-fetch');
-const GtfsRealtimeBindings = require('gtfs-realtime-bindings');
+const { FeedMessage } = require('gtfs-realtime-bindings');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
 
 const FEED_IDS = ['1', '26', '16', '21']; // Subway feeds
 
@@ -28,7 +29,8 @@ app.get('/trains', async (req, res) => {
 	  }
 
 	  const buffer = await response.arrayBuffer();
-	  const feed = GtfsRealtimeBindings.FeedMessage.decode(new Uint8Array(buffer));
+	  const feed = FeedMessage.decode(new Uint8Array(buffer));
+
 
 	  feed.entity.forEach(entity => {
 		if (entity.vehicle && entity.vehicle.position) {
