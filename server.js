@@ -36,8 +36,9 @@ app.get('/trains', async (req, res) => {
         throw new Error(`Failed to fetch MTA feed: HTTP ${response.status}`);
       }
 
-      const buffer = await response.arrayBuffer();
-      const feed = GtfsRealtimeBindings.FeedMessage.decode(new Uint8Array(buffer));
+	  const buffer = await response.arrayBuffer();
+	  const feed = GtfsRealtimeBindings.FeedMessage.decode(Buffer.from(buffer));
+
 
       feed.entity.forEach(entity => {
         if (entity.vehicle && entity.vehicle.position) {
