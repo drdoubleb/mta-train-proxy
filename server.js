@@ -17,25 +17,33 @@ app.get('/trains', async (req, res) => {
   try {
     const allTrains = [];
 
-    const feedPromises = FEED_IDS.map(async (feedId) => {
-      const url = `https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs${feedId ? `-${feedId}` : ''}`;
-      const response = await fetch(url); // No API key anymore
-      const buffer = await response.arrayBuffer();
-      const feed = GtfsRealtimeBindings.FeedMessage.decode(new Uint8Array(buffer));
+	const feedPromises = FEED_IDS.map(async (feedId) => {
+	  const url = `https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs${feedId ? `-${feedId}` : ''}`;
+	  console.log(`Fetching feed: ${url}`);
+	  const response = await fetch(url);
 
-      feed.entity.forEach(entity => {
-        if (entity.vehicle && entity.vehicle.position) {
-          const vehicle = entity.vehicle;
-          allTrains.push({
-            id: vehicle.vehicle && vehicle.vehicle.id ? vehicle.vehicle.id : 'unknown',
-            lat: vehicle.position.latitude,
-            lon: vehicle.position.longitude,
-            bearing: vehicle.position.bearing || 0,
-            line: vehicle.trip && vehicle.trip.routeId ? vehicle.trip.routeId : 'Unknown'
-          });
-        }
-      });
-    });
+	  if (!response.ok) {
+		console.error(`Failed to fetch ${url}: HTTP ${response.status}`);
+		throw new Error(`Failed to fetch MTA feed: HTTP ${response.status}`);
+	  }
+
+	  const buffer = await response.arrayBuffer();
+	  const feed = GtfsRealtimeBindings.FeedMessage.decode(new Uint8Array(buffer));
+
+	  feed.entity.forEach(entity => {
+		if (entity.vehicle && entity.vehicle.position) {
+		  const vehicle = entity.vehicle;
+		  allTrains.push({
+			id: vehicle.vehicle && vehicle.vehicle.id ? vehicle.vehicle.id : 'unknown',
+			lat: vehicle.position.latitude,
+			lon: vehicle.position.longitude,
+			bearing: vehicle.position.bearing || 0,
+			line: vehicle.trip && vehicle.trip.routeId ? vehicle.trip.routeId : 'Unknown'
+		  });
+		}
+	  });
+	});
+
 
     await Promise.all(feedPromises);
 
