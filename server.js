@@ -1,11 +1,11 @@
 const express = require('express');
 const fetch = require('node-fetch');
-const GtfsRealtimeBindings = require('gtfs-realtime-bindings').transit_realtime;
+const protobuf = require('protobufjs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Updated correct NYC Subway feed URLs
+// List of correct NYC subway feeds
 const FEED_URLS = [
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace',
@@ -17,7 +17,15 @@ const FEED_URLS = [
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si'
 ];
 
-// Allow CORS so your frontend can fetch from this proxy
+// Load GTFS-Realtime proto once
+let FeedMessage = null;
+
+async function loadProto() {
+  const root = await protobuf.load('https://raw.githubusercontent.com/google/transit/master/gtfs-realtime/proto/gtfs-realtime.proto');
+  FeedMessage = root.lookupType('transit_realtime.FeedMessage');
+}
+
+// Allow CORS
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   next();
@@ -25,6 +33,10 @@ app.use((req, res, next) => {
 
 app.get('/trains', async (req, res) => {
   try {
+    if (!FeedMessage) {
+      await loadProto();
+    }
+
     const allTrains = [];
 
     const feedPromises = FEED_URLS.map(async (url) => {
@@ -36,19 +48,18 @@ app.get('/trains', async (req, res) => {
         throw new Error(`Failed to fetch MTA feed: HTTP ${response.status}`);
       }
 
-	  const buffer = await response.arrayBuffer();
-	  const feed = GtfsRealtimeBindings.FeedMessage.decode(Buffer.from(buffer));
+      const buffer = await response.arrayBuffer();
+      const message = FeedMessage.decode(new Uint8Array(buffer));
 
-
-      feed.entity.forEach(entity => {
+      message.entity.forEach(entity => {
         if (entity.vehicle && entity.vehicle.position) {
           const vehicle = entity.vehicle;
           allTrains.push({
-            id: vehicle.vehicle && vehicle.vehicle.id ? vehicle.vehicle.id : 'unknown',
+            id: vehicle.vehicle?.id || 'unknown',
             lat: vehicle.position.latitude,
             lon: vehicle.position.longitude,
             bearing: vehicle.position.bearing || 0,
-            line: vehicle.trip && vehicle.trip.routeId ? vehicle.trip.routeId : 'Unknown'
+            line: vehicle.trip?.routeId || 'Unknown'
           });
         }
       });
@@ -59,11 +70,11 @@ app.get('/trains', async (req, res) => {
     res.json(allTrains);
 
   } catch (error) {
-    console.error('Error fetching MTA feeds:', error);
-    res.status(500).send('Error fetching MTA feeds');
+    console.error('Error fetching or decoding MTA feeds:', error);
+    res.status(500).send('Error fetching or decoding MTA feeds');
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚂 MTA Train Proxy running at http://localhost:${PORT}`);
+  console.log(`🚂 MTA Train Proxy (protobufjs version) running at http://localhost:${PORT}`);
 });
