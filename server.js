@@ -1,17 +1,15 @@
 const express = require('express');
 const fetch = require('node-fetch');
-const GtfsRealtimeBindings = require('@mapbox/gtfs-realtime-bindings');
+const GtfsRealtimeBindings = require('gtfs-realtime-bindings');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const MTA_API_KEY = process.env.MTA_API_KEY;
 
-// List of feed IDs you want to pull
-const FEED_IDS = ['1', '26', '16', '21']; 
-// 1 = 1/2/3/4/5/6/S; 26 = A/B/C/D/E/F/M/N/Q/R/W; 16 = L; 21 = 7
+// Multiple feeds (cover all NYC subway lines)
+const FEED_IDS = ['1', '26', '16', '21']; // 1 = numbered lines, 26 = lettered lines, 16 = L, 21 = 7
 
-// Allow CORS
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   next();
@@ -21,7 +19,6 @@ app.get('/trains', async (req, res) => {
   try {
     const allTrains = [];
 
-    // Fetch all feeds in parallel
     const feedPromises = FEED_IDS.map(async (feedId) => {
       const url = `https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs${feedId ? `-${feedId}` : ''}`;
       const response = await fetch(url, { headers: { 'x-api-key': MTA_API_KEY } });

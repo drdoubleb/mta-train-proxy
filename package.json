@@ -1,5 +1,5 @@
 {
-  "name": "mta-proxy-server",
+  "name": "mta-train-proxy",
   "version": "1.0.0",
   "description": "Proxy server for MTA GTFS-Realtime feeds",
   "main": "server.js",
@@ -9,6 +9,6 @@
   "dependencies": {
     "express": "^4.18.2",
     "node-fetch": "^2.6.7",
-    "@mapbox/gtfs-realtime-bindings": "^0.1.5"
+    "gtfs-realtime-bindings": "1.1.1"
   }
 }

@@ -7,4 +7,4 @@ services:
     startCommand: "node server.js"
     envVars:
       - key: MTA_API_KEY
-        value: your_real_mta_key_here
+        value: your_real_mta_api_key_here
