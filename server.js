@@ -5,8 +5,19 @@ const GtfsRealtimeBindings = require('gtfs-realtime-bindings').transit_realtime;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const FEED_IDS = ['1', '26', '16', '21']; // Example feed IDs
+// Updated correct NYC Subway feed URLs
+const FEED_URLS = [
+  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
+  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace',
+  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-NQRW',
+  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-BDFM',
+  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-G',
+  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz',
+  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l',
+  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si'
+];
 
+// Allow CORS so your frontend can fetch from this proxy
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   next();
@@ -16,11 +27,10 @@ app.get('/trains', async (req, res) => {
   try {
     const allTrains = [];
 
-    const feedPromises = FEED_IDS.map(async (feedId) => {
-      const url = `https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs${feedId ? `-${feedId}` : ''}`;
+    const feedPromises = FEED_URLS.map(async (url) => {
       console.log(`Fetching feed: ${url}`);
-
       const response = await fetch(url);
+
       if (!response.ok) {
         console.error(`Failed to fetch ${url}: HTTP ${response.status}`);
         throw new Error(`Failed to fetch MTA feed: HTTP ${response.status}`);
@@ -44,6 +54,7 @@ app.get('/trains', async (req, res) => {
     });
 
     await Promise.all(feedPromises);
+
     res.json(allTrains);
 
   } catch (error) {
