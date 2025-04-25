@@ -21,9 +21,10 @@ const FEED_URLS = [
 let FeedMessage = null;
 
 async function loadProto() {
-  await protobuf.load('./gtfs-realtime.proto');
+  const root = await protobuf.load('./gtfs-realtime.proto'); // <-- FIXED
   FeedMessage = root.lookupType('transit_realtime.FeedMessage');
 }
+
 
 // Allow CORS
 app.use((req, res, next) => {
