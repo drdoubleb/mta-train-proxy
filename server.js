@@ -5,12 +5,12 @@ const protobuf = require('protobufjs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Correct list of NYC Subway feed URLs
+// Corrected feed list (bdfm lowercase)
 const FEED_URLS = [
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace',
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-NQRW',
-  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-BDFM',
+  'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm',
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-G',
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz',
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l',
@@ -25,7 +25,7 @@ async function loadProto() {
   FeedMessage = root.lookupType('transit_realtime.FeedMessage');
 }
 
-// Allow CORS for frontend access
+// Allow CORS for frontend
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   next();
@@ -40,7 +40,7 @@ app.get('/trains', async (req, res) => {
     const allTrains = [];
 
     const feedPromises = FEED_URLS.map(async (url) => {
-      console.log(`Fetching feed: ${url}`);
+      console.log(`\nFetching feed: ${url}`);
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -53,7 +53,7 @@ app.get('/trains', async (req, res) => {
 
       console.log('First 20 bytes of response:', Array.from(fullBuffer.slice(0, 20)));
 
-      // Skip if it's XML (starts with '<' == 60 ASCII)
+      // Skip if XML
       if (fullBuffer[0] === 60) {
         console.warn(`Feed at ${url} is returning XML (not GTFS-Realtime), skipping.`);
         return;
@@ -61,7 +61,6 @@ app.get('/trains', async (req, res) => {
 
       let message;
       try {
-        // Try decoding raw first
         message = FeedMessage.decode(fullBuffer);
         console.log(`Decoded raw buffer successfully from ${url}.`);
       } catch (errorRaw) {
@@ -75,8 +74,12 @@ app.get('/trains', async (req, res) => {
         }
       }
 
+      let feedTrainCount = 0;
+
       message.entity.forEach(entity => {
-        if (entity.vehicle && entity.vehicle.position) {
+        console.log('Decoded entity:', JSON.stringify(entity, null, 2));
+
+        if (entity.vehicle && entity.vehicle.position && entity.vehicle.position.latitude && entity.vehicle.position.longitude) {
           const vehicle = entity.vehicle;
           allTrains.push({
             id: vehicle.vehicle?.id || 'unknown',
@@ -85,12 +88,18 @@ app.get('/trains', async (req, res) => {
             bearing: vehicle.position.bearing || 0,
             line: vehicle.trip?.routeId || 'Unknown'
           });
+          feedTrainCount++;
+        } else {
+          console.warn('Entity missing position info, skipping.');
         }
       });
+
+      console.log(`Feed ${url} contributed ${feedTrainCount} trains.`);
     });
 
     await Promise.all(feedPromises);
 
+    console.log(`\nTotal trains fetched across all feeds: ${allTrains.length}`);
     res.json(allTrains);
 
   } catch (error) {
@@ -100,5 +109,5 @@ app.get('/trains', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚂 MTA Train Proxy (with XML protection) running at http://localhost:${PORT}`);
+  console.log(`🚂 MTA Train Proxy (debug mode) running at http://localhost:${PORT}`);
 });
