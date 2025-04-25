@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: mta-train-proxy
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "node server.js"
+    envVars:
+      - key: MTA_API_KEY
+        value: your_real_mta_key_here
