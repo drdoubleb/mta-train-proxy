@@ -72,23 +72,18 @@ app.get('/trains', async (req, res) => {
         }
       }
 
-      let validTrainsFromFeed = 0;
+		message.entity.forEach(entity => {
+		  if (entity.vehicle) {
+			console.log('Found VehiclePosition entity:', entity.vehicle);
+		  }
+		  if (entity.tripUpdate) {
+			console.log('Found TripUpdate entity:', entity.tripUpdate);
+		  }
+		  if (entity.alert) {
+			console.log('Found Alert entity:', entity.alert);
+		  }
+		});
 
-      message.entity.forEach(entity => {
-        if (entity.vehicle && entity.vehicle.position && entity.vehicle.position.latitude && entity.vehicle.position.longitude) {
-          const vehicle = entity.vehicle;
-          allTrains.push({
-            id: vehicle.vehicle?.id || 'unknown',
-            lat: vehicle.position.latitude,
-            lon: vehicle.position.longitude,
-            bearing: vehicle.position.bearing || 0,
-            line: vehicle.trip?.routeId || 'Unknown'
-          });
-          validTrainsFromFeed++;
-        }
-      });
-
-      console.log(`Feed ${url}: ${validTrainsFromFeed} valid trains with GPS.`);
     });
 
     await Promise.all(feedPromises);
