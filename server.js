@@ -1,11 +1,12 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const protobuf = require('protobufjs');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Corrected feed URLs (lowercase bdfm)
+// Corrected subway feed URLs
 const FEED_URLS = [
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
   'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace',
@@ -20,12 +21,15 @@ const FEED_URLS = [
 // Load GTFS-Realtime proto once
 let FeedMessage = null;
 
+// Load stations.json once
+const stations = JSON.parse(fs.readFileSync('./stations.json', 'utf8'));
+
 async function loadProto() {
   const root = await protobuf.load('./gtfs-realtime.proto');
   FeedMessage = root.lookupType('transit_realtime.FeedMessage');
 }
 
-// Enable CORS
+// CORS for frontend access
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   next();
@@ -72,23 +76,40 @@ app.get('/trains', async (req, res) => {
         }
       }
 
-		message.entity.forEach(entity => {
-		  if (entity.vehicle) {
-			console.log('Found VehiclePosition entity:', entity.vehicle);
-		  }
-		  if (entity.tripUpdate) {
-			console.log('Found TripUpdate entity:', entity.tripUpdate);
-		  }
-		  if (entity.alert) {
-			console.log('Found Alert entity:', entity.alert);
-		  }
-		});
+      let guessedTrainsFromFeed = 0;
 
+      message.entity.forEach(entity => {
+        if (entity.tripUpdate && entity.tripUpdate.stopTimeUpdate && entity.tripUpdate.stopTimeUpdate.length > 0) {
+          const trip = entity.tripUpdate.trip;
+          const firstStop = entity.tripUpdate.stopTimeUpdate[0];
+          const stopId = firstStop.stopId;
+
+          if (stopId && stations[stopId]) {
+            let { lat, lon } = stations[stopId];
+
+            // Slight randomization to prevent perfect overlap
+            const jitter = 0.0002; // ~20 meters
+            lat += (Math.random() - 0.5) * jitter;
+            lon += (Math.random() - 0.5) * jitter;
+
+            allTrains.push({
+              id: trip?.tripId || 'unknown',
+              lat,
+              lon,
+              line: trip?.routeId || 'Unknown',
+              direction: trip?.directionId === 1 ? 'S' : 'N' // 0 = Northbound, 1 = Southbound
+            });
+            guessedTrainsFromFeed++;
+          }
+        }
+      });
+
+      console.log(`Feed ${url}: ${guessedTrainsFromFeed} trains with predicted position.`);
     });
 
     await Promise.all(feedPromises);
 
-    console.log(`\nTOTAL: ${allTrains.length} live trains fetched across all feeds.`);
+    console.log(`\nTOTAL: ${allTrains.length} trains with predicted positions.`);
     res.json(allTrains);
 
   } catch (error) {
@@ -98,5 +119,5 @@ app.get('/trains', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚂 MTA Train Proxy (clean mode) running at http://localhost:${PORT}`);
+  console.log(`🚂 MTA Train Proxy (TripUpdate guessing) running at http://localhost:${PORT}`);
 });
