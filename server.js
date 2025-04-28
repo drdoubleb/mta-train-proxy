@@ -78,7 +78,6 @@ app.get('/trains', async (req, res) => {
 
       let guessedTrainsFromFeed = 0;
 
-		const allTrains = [];
 
 		message.entity.forEach(entity => {
 		  if (entity.tripUpdate && entity.tripUpdate.stopTimeUpdate && entity.tripUpdate.stopTimeUpdate.length > 1) {
