@@ -78,31 +78,41 @@ app.get('/trains', async (req, res) => {
 
       let guessedTrainsFromFeed = 0;
 
-      message.entity.forEach(entity => {
-        if (entity.tripUpdate && entity.tripUpdate.stopTimeUpdate && entity.tripUpdate.stopTimeUpdate.length > 0) {
-          const trip = entity.tripUpdate.trip;
-          const firstStop = entity.tripUpdate.stopTimeUpdate[0];
-          const stopId = firstStop.stopId;
+		const allTrains = [];
 
-          if (stopId && stations[stopId]) {
-            let { lat, lon } = stations[stopId];
+		message.entity.forEach(entity => {
+		  if (entity.tripUpdate && entity.tripUpdate.stopTimeUpdate && entity.tripUpdate.stopTimeUpdate.length > 1) {
+			const trip = entity.tripUpdate.trip;
+			const stops = entity.tripUpdate.stopTimeUpdate;
 
-            // Slight randomization to prevent perfect overlap
-            const jitter = 0.0002; // ~20 meters
-            lat += (Math.random() - 0.5) * jitter;
-            lon += (Math.random() - 0.5) * jitter;
+			// Find prior and next stops
+			const prior = stops[0];
+			const next = stops[1];
 
-            allTrains.push({
-              id: trip?.tripId || 'unknown',
-              lat,
-              lon,
-              line: trip?.routeId || 'Unknown',
-              direction: trip?.directionId === 1 ? 'S' : 'N' // 0 = Northbound, 1 = Southbound
-            });
-            guessedTrainsFromFeed++;
-          }
-        }
-      });
+			if (prior && next && stations[prior.stopId] && stations[next.stopId]) {
+			  const priorStation = stations[prior.stopId];
+			  const nextStation = stations[next.stopId];
+
+			  allTrains.push({
+				id: trip?.tripId || 'unknown',
+				line: trip?.routeId || 'Unknown',
+				priorStop: {
+				  stopId: prior.stopId,
+				  lat: priorStation.lat,
+				  lon: priorStation.lon
+				},
+				nextStop: {
+				  stopId: next.stopId,
+				  lat: nextStation.lat,
+				  lon: nextStation.lon
+				},
+				departureTime: Number(prior.departure?.time) || Number(prior.arrival?.time),
+				arrivalTime: Number(next.arrival?.time)
+			  });
+			}
+		  }
+		});
+
 
       console.log(`Feed ${url}: ${guessedTrainsFromFeed} trains with predicted position.`);
     });
