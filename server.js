@@ -127,23 +127,34 @@ app.get('/trains', async (req, res) => {
   }
 });
 
+let lastBusFetchTime = 0;
+let cachedBusData = null;
+
 app.get('/bus-positions', async (req, res) => {
+  const now = Date.now();
+  const maxAge = 30 * 1000; // 30 seconds
+
+  if (cachedBusData && (now - lastBusFetchTime < maxAge)) {
+    return res.json(cachedBusData); // serve cached
+  }
+
   try {
-    const response = await fetch(`https://bustime.mta.info/api/siri/vehicle-monitoring.json?key=${process.env.MTA_API_KEY}`);
-	//const response = await fetch(`https://bustime.mta.info/api/siri/vehicle-monitoring.json?key=${process.env.MTA_API_KEY}&VehicleMonitoringDetailLevel=calls`);
+    const response = await fetch(`https://bustime.mta.info/api/siri/vehicle-monitoring.json?key=${process.env.MTA_API_KEY}&VehicleMonitoringDetailLevel=normal`);
     const data = await response.json();
 
     const buses = data.Siri.ServiceDelivery.VehicleMonitoringDelivery[0].VehicleActivity.map(activity => {
       const mvj = activity.MonitoredVehicleJourney;
       return {
-        id: mvj.VehicleRef,
-        //route: mvj.LineRef,
-		route: mvj.LineRef.replace(/^[^_]+_/, ''),  // → "Q60", "M3", etc.
-        lat: mvj.VehicleLocation.Latitude,
-        lon: mvj.VehicleLocation.Longitude,
+        id: mvj.VehicleRef?.replace(/^[^_]+_/, '') ?? '',
+        route: mvj.LineRef?.replace(/^[^_]+_/, '') ?? '',
+        lat: mvj.VehicleLocation?.Latitude,
+        lon: mvj.VehicleLocation?.Longitude,
         bearing: mvj.Bearing
       };
     });
+
+    cachedBusData = buses;
+    lastBusFetchTime = now;
 
     res.json(buses);
   } catch (err) {
@@ -151,6 +162,7 @@ app.get('/bus-positions', async (req, res) => {
     res.status(500).send("Bus API error");
   }
 });
+
 
 
 
