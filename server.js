@@ -127,6 +127,34 @@ app.get('/trains', async (req, res) => {
   }
 });
 
+app.get('/bus-positions', async (req, res) => {
+  try {
+    const protoType = await loadProto(); // same GTFS-Realtime schema
+    const response = await fetch(`https://gtfsrt.prod.obanyc.com/vehiclePositions?key=${process.env.MTA_API_KEY}`);
+    const buffer = await response.arrayBuffer();
+    const decoded = protoType.decode(new Uint8Array(buffer));
+
+    const buses = decoded.entity.map(entity => {
+      const vp = entity.vehicle;
+      return {
+        id: entity.id,
+        route: vp.trip?.routeId,
+        lat: vp.position?.latitude,
+        lon: vp.position?.longitude,
+        bearing: vp.position?.bearing,
+        tripId: vp.trip?.tripId,
+        timestamp: vp.timestamp
+      };
+    });
+
+    res.json(buses);
+  } catch (err) {
+    console.error("Error fetching or decoding bus feed:", err);
+    res.status(500).send("Bus data error");
+  }
+});
+
+
 app.listen(PORT, () => {
   console.log(`🚂 MTA Train Proxy (TripUpdate guessing) running at http://localhost:${PORT}`);
 });
