@@ -40,7 +40,10 @@ app.get('/trains', async (req, res) => {
     if (!FeedMessage) {
       await loadProto();
     }
-
+	if (!protoType) {
+	  console.error("Failed to load GTFS proto");
+	  return res.status(500).send("GTFS schema error");
+	}
     const allTrains = [];
 
     const feedPromises = FEED_URLS.map(async (url) => {
@@ -54,6 +57,8 @@ app.get('/trains', async (req, res) => {
 
       const buffer = await response.arrayBuffer();
       const fullBuffer = new Uint8Array(buffer);
+	  console.log("Bus buffer length:", buffer.byteLength);
+	  console.log("First bytes:", new Uint8Array(buffer).slice(0, 10));
 
       // Skip if it's XML
       if (fullBuffer[0] === 60) {
