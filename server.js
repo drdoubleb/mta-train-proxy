@@ -139,7 +139,8 @@ app.get('/bus-positions', async (req, res) => {
   }
 
   try {
-    const response = await fetch(`https://bustime.mta.info/api/siri/vehicle-monitoring.json?key=${process.env.MTA_API_KEY}&VehicleMonitoringDetailLevel=normal`);
+    //const response = await fetch(`https://bustime.mta.info/api/siri/vehicle-monitoring.json?key=${process.env.MTA_API_KEY}&VehicleMonitoringDetailLevel=normal`);
+    const response = await fetch(`https://bustime.mta.info/api/siri/vehicle-monitoring.json?key=${process.env.MTA_API_KEY});
     const data = await response.json();
 
     const buses = data.Siri.ServiceDelivery.VehicleMonitoringDelivery[0].VehicleActivity.map(activity => {
