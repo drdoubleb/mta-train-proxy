@@ -137,7 +137,7 @@ app.get('/bus-positions', async (req, res) => {
       return {
         id: mvj.VehicleRef,
         //route: mvj.LineRef,
-		route: mvj.LineRef.replace(/^[^_]+_/, '')  // → "Q60", "M3", etc.
+		route: mvj.LineRef.replace(/^[^_]+_/, ''),  // → "Q60", "M3", etc.
         lat: mvj.VehicleLocation.Latitude,
         lon: mvj.VehicleLocation.Longitude,
         bearing: mvj.Bearing
