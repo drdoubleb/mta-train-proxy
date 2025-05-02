@@ -129,36 +129,27 @@ app.get('/trains', async (req, res) => {
 
 app.get('/bus-positions', async (req, res) => {
   try {
-    const protoType = await loadProto(); // same GTFS-Realtime schema
-	if (!protoType) {
-	  console.error("Failed to load GTFS proto");
-	  return res.status(500).send("GTFS schema error");
-	}
-    const response = await fetch(`https://gtfsrt.prod.obanyc.com/vehiclePositions?key=${process.env.MTA_API_KEY}`);
-    const buffer = await response.arrayBuffer();
-	console.log("Bus buffer length:", buffer.byteLength);
-	console.log("First bytes:", new Uint8Array(buffer).slice(0, 10));
-    const decoded = protoType.decode(new Uint8Array(buffer));
+    const response = await fetch(`https://bustime.mta.info/api/siri/vehicle-monitoring.json?key=${process.env.MTA_API_KEY}`);
+    const data = await response.json();
 
-    const buses = decoded.entity.map(entity => {
-      const vp = entity.vehicle;
+    const buses = data.Siri.ServiceDelivery.VehicleMonitoringDelivery[0].VehicleActivity.map(activity => {
+      const mvj = activity.MonitoredVehicleJourney;
       return {
-        id: entity.id,
-        route: vp.trip?.routeId,
-        lat: vp.position?.latitude,
-        lon: vp.position?.longitude,
-        bearing: vp.position?.bearing,
-        tripId: vp.trip?.tripId,
-        timestamp: vp.timestamp
+        id: mvj.VehicleRef,
+        route: mvj.LineRef,
+        lat: mvj.VehicleLocation.Latitude,
+        lon: mvj.VehicleLocation.Longitude,
+        bearing: mvj.Bearing
       };
     });
 
     res.json(buses);
   } catch (err) {
-    console.error("Error fetching or decoding bus feed:", err);
-    res.status(500).send("Bus data error");
+    console.error("Error fetching SIRI bus data:", err);
+    res.status(500).send("Bus API error");
   }
 });
+
 
 
 app.listen(PORT, () => {
