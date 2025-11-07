@@ -167,6 +167,124 @@ app.get('/bus-positions', async (req, res) => {
 
 
 
+
+/**
+ * ----------------------
+ * Bee-Line GTFS-Realtime
+ * ----------------------
+ * Westchester County Bee-Line exposes GTFS-RT endpoints with JSON/protobuf/XML formats.
+ * We proxy them here to (a) avoid CORS issues and (b) allow light caching.
+ *
+ * Configure via env vars:
+ *   BEELINE_BASE (default: https://wcgmvgtfs.westchestergov.com/api)
+ *   BEELINE_CACHE_MS (default: 5000)
+ */
+const BEELINE_BASE = process.env.BEELINE_BASE || 'https://wcgmvgtfs.westchestergov.com/api';
+const BEELINE_CACHE_MS = parseInt(process.env.BEELINE_CACHE_MS || '5000', 10);
+
+let beelineCache = {
+  vehiclepositions: { ts: 0, body: null, contentType: 'application/json' },
+  tripupdates: { ts: 0, body: null, contentType: 'application/json' },
+  servicealerts: { ts: 0, body: null, contentType: 'application/json' },
+};
+
+// Lightweight CORS for everything (safe since we only expose public transit data)
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+async function proxyBeeLine(feed, format = 'json', res) {
+  try {
+    const now = Date.now();
+    const cache = beelineCache[feed];
+    const isJson = format.toLowerCase() === 'json';
+
+    if (cache && (now - cache.ts) < BEELINE_CACHE_MS && cache.body) {
+      res.type(cache.contentType).send(cache.body);
+      return;
+    }
+
+    const url = `${BEELINE_BASE}/${feed}?format=${encodeURIComponent(format)}`;
+
+    const upstream = await fetch(url, {
+      // Not sending credentials or headers; Bee-Line endpoints are anonymous public
+      timeout: 8000
+    });
+
+    if (!upstream.ok) {
+      res.status(upstream.status).send(`Bee-Line upstream error ${upstream.status}`);
+      return;
+    }
+
+    const contentType = upstream.headers.get('content-type') || (isJson ? 'application/json' : 'application/octet-stream');
+    let bodyBuf = await upstream.buffer();
+
+    // Update cache
+    if (beelineCache[feed]) {
+      beelineCache[feed].ts = now;
+      beelineCache[feed].body = bodyBuf;
+      beelineCache[feed].contentType = contentType;
+    }
+
+    res.type(contentType).send(bodyBuf);
+  } catch (err) {
+    console.error(`[Bee-Line] Proxy error for ${feed}:`, err.message || err);
+    res.status(502).send('Bee-Line proxy error');
+  }
+}
+
+// Raw pass-throughs (choose ?format=json|gtfs.proto|xml)
+app.get('/beeline/vehiclepositions', async (req, res) => {
+  const format = req.query.format || 'json';
+  await proxyBeeLine('vehiclepositions', format, res);
+});
+
+app.get('/beeline/tripupdates', async (req, res) => {
+  const format = req.query.format || 'json';
+  await proxyBeeLine('tripupdates', format, res);
+});
+
+app.get('/beeline/servicealerts', async (req, res) => {
+  const format = req.query.format || 'json';
+  await proxyBeeLine('servicealerts', format, res);
+});
+
+/**
+ * Convenience endpoint: /beeline/vehicles (JSON only)
+ * Returns a trimmed array of vehicle markers for easy mapping.
+ */
+app.get('/beeline/vehicles', async (req, res) => {
+  try {
+    const upstream = await fetch(`${BEELINE_BASE}/vehiclepositions?format=json`, { timeout: 8000 });
+    if (!upstream.ok) {
+      return res.status(upstream.status).send(`Bee-Line vehicles upstream error ${upstream.status}`);
+    }
+    const data = await upstream.json();
+    const entities = (data?.entity || []).filter(e => e.vehicle && e.vehicle.position);
+
+    const markers = entities.map(e => ({
+      id: e.id || e.vehicle?.vehicle?.id || null,
+      lat: e.vehicle?.position?.latitude,
+      lon: e.vehicle?.position?.longitude,
+      bearing: e.vehicle?.position?.bearing,
+      speed: e.vehicle?.position?.speed,
+      route_id: e.vehicle?.trip?.route_id || e.vehicle?.trip?.routeId || null,
+      trip_id: e.vehicle?.trip?.trip_id || e.vehicle?.trip?.tripId || null,
+      timestamp: e.vehicle?.timestamp,
+      label: e.vehicle?.vehicle?.label || null,
+    })).filter(m => typeof m.lat === 'number' && typeof m.lon === 'number');
+
+    res.json({ count: markers.length, vehicles: markers });
+  } catch (err) {
+    console.error('[Bee-Line] vehicles error:', err.message || err);
+    res.status(502).send('Bee-Line vehicles error');
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚂 MTA Train Proxy (TripUpdate guessing) running at http://localhost:${PORT}`);
 });

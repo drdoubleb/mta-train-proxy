@@ -8,3 +8,7 @@ services:
     envVars:
       - key: MTA_API_KEY
         value: your_real_mta_api_key_here
+      - key: BEELINE_BASE
+        value: https://wcgmvgtfs.westchestergov.com/api
+      - key: BEELINE_CACHE_MS
+        value: 5000
