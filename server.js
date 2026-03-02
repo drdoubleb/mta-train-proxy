@@ -183,10 +183,28 @@ const BEELINE_BASE = process.env.BEELINE_BASE || 'https://wcgmvgtfs.westchesterg
 const BEELINE_CACHE_MS = parseInt(process.env.BEELINE_CACHE_MS || '5000', 10);
 
 let beelineCache = {
-  vehiclepositions: { ts: 0, body: null, contentType: 'application/json' },
-  tripupdates: { ts: 0, body: null, contentType: 'application/json' },
-  servicealerts: { ts: 0, body: null, contentType: 'application/json' },
+  vehiclepositions: {},
+  tripupdates: {},
+  servicealerts: {},
 };
+
+function normalizeBeeLineFormat(format = 'json') {
+  const normalized = String(format).trim().toLowerCase();
+
+  if (normalized === 'protobuf' || normalized === 'proto' || normalized === 'pb') {
+    return 'gtfs.proto';
+  }
+
+  if (normalized === 'gtfs' || normalized === 'gtfs-rt' || normalized === 'gtfsrt') {
+    return 'gtfs.proto';
+  }
+
+  if (normalized === 'xml' || normalized === 'json' || normalized === 'gtfs.proto') {
+    return normalized;
+  }
+
+  return 'json';
+}
 
 // Lightweight CORS for everything (safe since we only expose public transit data)
 app.use((req, res, next) => {
@@ -197,40 +215,49 @@ app.use((req, res, next) => {
   next();
 });
 
+async function fetchBeeLineFeed(feed, format = 'json') {
+  const now = Date.now();
+  const normalizedFormat = normalizeBeeLineFormat(format);
+  const feedCache = beelineCache[feed] || (beelineCache[feed] = {});
+  const cache = feedCache[normalizedFormat];
+  const isJson = normalizedFormat === 'json';
+
+  if (cache && (now - cache.ts) < BEELINE_CACHE_MS && cache.body) {
+    return { body: cache.body, contentType: cache.contentType, normalizedFormat, fromCache: true };
+  }
+
+  const url = `${BEELINE_BASE}/${feed}?format=${encodeURIComponent(normalizedFormat)}`;
+  const upstream = await fetch(url, {
+    timeout: 8000,
+    headers: {
+      Accept: isJson ? 'application/json' : '*/*',
+      'User-Agent': 'mta-train-proxy/1.0'
+    }
+  });
+
+  if (!upstream.ok) {
+    const text = await upstream.text().catch(() => '');
+    return { upstreamError: true, status: upstream.status, bodyText: text };
+  }
+
+  const contentType = upstream.headers.get('content-type') || (isJson ? 'application/json' : 'application/octet-stream');
+  const bodyBuf = await upstream.buffer();
+
+  feedCache[normalizedFormat] = { ts: now, body: bodyBuf, contentType };
+
+  return { body: bodyBuf, contentType, normalizedFormat, fromCache: false };
+}
+
 async function proxyBeeLine(feed, format = 'json', res) {
   try {
-    const now = Date.now();
-    const cache = beelineCache[feed];
-    const isJson = format.toLowerCase() === 'json';
-
-    if (cache && (now - cache.ts) < BEELINE_CACHE_MS && cache.body) {
-      res.type(cache.contentType).send(cache.body);
+    const result = await fetchBeeLineFeed(feed, format);
+    if (result.upstreamError) {
+      const reason = result.bodyText ? `: ${result.bodyText.slice(0, 200)}` : '';
+      res.status(result.status).send(`Bee-Line upstream error ${result.status}${reason}`);
       return;
     }
 
-    const url = `${BEELINE_BASE}/${feed}?format=${encodeURIComponent(format)}`;
-
-    const upstream = await fetch(url, {
-      // Not sending credentials or headers; Bee-Line endpoints are anonymous public
-      timeout: 8000
-    });
-
-    if (!upstream.ok) {
-      res.status(upstream.status).send(`Bee-Line upstream error ${upstream.status}`);
-      return;
-    }
-
-    const contentType = upstream.headers.get('content-type') || (isJson ? 'application/json' : 'application/octet-stream');
-    let bodyBuf = await upstream.buffer();
-
-    // Update cache
-    if (beelineCache[feed]) {
-      beelineCache[feed].ts = now;
-      beelineCache[feed].body = bodyBuf;
-      beelineCache[feed].contentType = contentType;
-    }
-
-    res.type(contentType).send(bodyBuf);
+    res.type(result.contentType).send(result.body);
   } catch (err) {
     console.error(`[Bee-Line] Proxy error for ${feed}:`, err.message || err);
     res.status(502).send('Bee-Line proxy error');
@@ -259,24 +286,32 @@ app.get('/beeline/servicealerts', async (req, res) => {
  */
 app.get('/beeline/vehicles', async (req, res) => {
   try {
-    const upstream = await fetch(`${BEELINE_BASE}/vehiclepositions?format=json`, { timeout: 8000 });
-    if (!upstream.ok) {
-      return res.status(upstream.status).send(`Bee-Line vehicles upstream error ${upstream.status}`);
+    const result = await fetchBeeLineFeed('vehiclepositions', 'json');
+    if (result.upstreamError) {
+      const reason = result.bodyText ? `: ${result.bodyText.slice(0, 200)}` : '';
+      return res.status(result.status).send(`Bee-Line vehicles upstream error ${result.status}${reason}`);
     }
-    const data = await upstream.json();
-    const entities = (data?.entity || []).filter(e => e.vehicle && e.vehicle.position);
 
-    const markers = entities.map(e => ({
-      id: e.id || e.vehicle?.vehicle?.id || null,
-      lat: e.vehicle?.position?.latitude,
-      lon: e.vehicle?.position?.longitude,
-      bearing: e.vehicle?.position?.bearing,
-      speed: e.vehicle?.position?.speed,
-      route_id: e.vehicle?.trip?.route_id || e.vehicle?.trip?.routeId || null,
-      trip_id: e.vehicle?.trip?.trip_id || e.vehicle?.trip?.tripId || null,
-      timestamp: e.vehicle?.timestamp,
-      label: e.vehicle?.vehicle?.label || null,
-    })).filter(m => typeof m.lat === 'number' && typeof m.lon === 'number');
+    const data = JSON.parse(result.body.toString('utf8'));
+    const entities = (data?.entity || data?.entities || []).filter(e => e.vehicle && e.vehicle.position);
+
+    const markers = entities.map(e => {
+      const position = e.vehicle?.position || {};
+      const trip = e.vehicle?.trip || {};
+      const vehicle = e.vehicle?.vehicle || {};
+
+      return {
+        id: e.id || vehicle.id || null,
+        lat: position.latitude ?? position.lat,
+        lon: position.longitude ?? position.lon,
+        bearing: position.bearing,
+        speed: position.speed,
+        route_id: trip.route_id || trip.routeId || null,
+        trip_id: trip.trip_id || trip.tripId || null,
+        timestamp: e.vehicle?.timestamp,
+        label: vehicle.label || null,
+      };
+    }).filter(m => Number.isFinite(m.lat) && Number.isFinite(m.lon));
 
     res.json({ count: markers.length, vehicles: markers });
   } catch (err) {
